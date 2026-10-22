@@ -1,0 +1,36 @@
+{
+  "name": "made-site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tresjs/core": "^5.9.3",
+    "@vueuse/core": "^14.4.0",
+    "gsap": "^3.15.0",
+    "lottie-web": "^5.13.0",
+    "lucide-vue-next": "^1.0.0",
+    "pinia": "^4.1.0",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.186.1",
+    "vue": "^3.5.42",
+    "vue-router": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/test-utils": "^2.5.1",
+    "@vue/tsconfig": "^0.9.1",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.64.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^3.3.11"
+  }
+}
