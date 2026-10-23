@@ -25,6 +25,16 @@ const router = createRouter({
       component: () => import('../views/ProfileView.vue'),
     },
     {
+      path: '/notifications',
+      name: 'notifications',
+      component: () => import('../views/NotificationsView.vue'),
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminView.vue'),
+    },
+    {
       path: '/projects/new',
       name: 'create-project',
       component: () => import('../views/CreateProjectView.vue'),
@@ -47,6 +57,10 @@ router.beforeEach(async (to) => {
   }
 
   if (auth.user && isPublic) return { path: '/' }
+
+  if (to.name === 'admin' && auth.user && !auth.user.admin) {
+    return { path: '/' }
+  }
 })
 
 export default router

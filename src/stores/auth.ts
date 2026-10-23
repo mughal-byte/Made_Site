@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string
   avatar: string
   provider: 'password' | 'google' | 'github'
+  admin: boolean
 }
 
 interface AuthResponse {
@@ -68,6 +69,7 @@ export const useAuthStore = defineStore('auth', {
 
     async updateProfile(body: {
       name: string
+      email?: string
       avatar?: string
       currentPassword?: string
       newPassword?: string

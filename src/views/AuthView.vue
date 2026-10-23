@@ -2,15 +2,16 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useToastStore } from '../stores/toast'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const toast = useToastStore()
 
 const name = ref('')
 const email = ref('')
 const password = ref('')
-const error = ref('')
 const pending = ref(false)
 
 const isRegister = computed(() => route.name === 'register')
@@ -35,18 +36,18 @@ const queryError = computed(() => {
   }
 })
 
-const shownError = computed(() => error.value || queryError.value)
-
 const linkQuery = computed(() => {
   const value = route.query.redirect
   return typeof value === 'string' ? { redirect: value } : {}
 })
 
 watch(
-  () => route.name,
+  () => route.query.error,
   () => {
-    error.value = ''
+    const message = queryError.value
+    if (message) toast.error('Sign-in did not finish', message)
   },
+  { immediate: true },
 )
 
 function providerHref(provider: 'google' | 'github') {
@@ -54,7 +55,6 @@ function providerHref(provider: 'google' | 'github') {
 }
 
 async function submit() {
-  error.value = ''
   pending.value = true
 
   const result = isRegister.value
@@ -63,9 +63,17 @@ async function submit() {
 
   pending.value = false
   if (!result.ok) {
-    error.value = result.error || 'Sign-in did not finish. Try again.'
+    toast.error(
+      isRegister.value ? 'Account could not be created' : 'Sign-in failed',
+      result.error || 'Try again in a moment.',
+    )
     return
   }
+
+  toast.success(
+    isRegister.value ? 'Account created' : 'Welcome back',
+    'You are signed in.',
+  )
 
   router.push(redirect.value)
 }
@@ -126,8 +134,6 @@ async function submit() {
             class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white outline-none focus:border-violet-500"
           />
         </div>
-
-        <p v-if="shownError" class="text-sm text-red-300">{{ shownError }}</p>
 
         <button
           type="submit"

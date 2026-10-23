@@ -15,6 +15,8 @@ import BlockPreview from '../components/editor/BlockPreview.vue'
 import RangeField from '../components/ui/RangeField.vue'
 import { useProjectsStore } from '../stores/projects'
 import { useAuthStore } from '../stores/auth'
+import { useNotificationsStore } from '../stores/notifications'
+import { useToastStore } from '../stores/toast'
 import {
   createEditorElement,
   elementPresets,
@@ -34,10 +36,11 @@ const router = useRouter()
 const projectsStore = useProjectsStore()
 const auth = useAuthStore()
 const editorStore = useEditorStore()
+const notifications = useNotificationsStore()
+const toast = useToastStore()
 
 const selectedId = ref('')
 const gestureOpen = ref(false)
-const savedLabel = ref('Saved on this device')
 const openMenu = ref<'profile' | 'bell' | null>(null)
 const openAdd = ref<string | null>('text')
 const alignments: TextAlignment[] = ['left', 'center', 'right']
@@ -237,10 +240,15 @@ function redo() {
 function saveProject() {
   editorStore.save()
   projectsStore.saveProjects()
-  savedLabel.value = 'Saved'
-  window.setTimeout(() => {
-    savedLabel.value = 'Saved on this device'
-  }, 1400)
+
+  toast.success(
+    'Changes saved',
+    `${project.value?.name ?? 'Your website'} was saved on this device.`,
+  )
+  notifications.notify(
+    'Changes saved',
+    `${project.value?.name ?? 'Your website'} was saved on this device.`,
+  )
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -327,6 +335,7 @@ const accountInitial = computed(() => accountName.value.trim().charAt(0).toUpper
 async function signOut() {
   openMenu.value = null
   await auth.logout()
+  toast.info('Signed out', 'You can sign in again at any time.')
   router.push('/login')
 }
 
@@ -394,7 +403,7 @@ onUnmounted(() => {
           class="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500"
           @click="saveProject"
         >
-          {{ savedLabel === 'Saved' ? 'Saved' : 'Save' }}
+          Save
         </button>
 
         <div class="relative" data-menu>

@@ -2,8 +2,9 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { loadEnv, type Connect, type Plugin } from 'vite'
+import { readJson, sendJson, textField } from './http.ts'
 
-interface Account {
+export interface Account {
   id: string
   name: string
   email: string
@@ -13,12 +14,13 @@ interface Account {
   providerId: string
 }
 
-interface SessionUser {
+export interface SessionUser {
   id: string
   name: string
   email: string
   avatar: string
   provider: Account['provider']
+  admin: boolean
 }
 
 const accountsFile = '.accounts.json'
@@ -36,7 +38,7 @@ function authSecret(env: Record<string, string>) {
   return secret
 }
 
-function readAccounts(): Account[] {
+export function readAccounts(): Account[] {
   if (!existsSync(accountsFile)) return []
 
   try {
@@ -45,6 +47,18 @@ function readAccounts(): Account[] {
   } catch {
     return []
   }
+}
+
+export function isAdminAccount(account: Account, env: Record<string, string>): boolean {
+  const list = (env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+
+  if (list.length > 0) return list.includes(account.email.toLowerCase())
+
+  const accounts = readAccounts()
+  return accounts[0]?.id === account.id
 }
 
 function writeAccounts(accounts: Account[]) {
@@ -99,10 +113,27 @@ function readToken(token: string, secret: string): SessionUser | null {
       email: data.email,
       avatar: data.avatar || '',
       provider: data.provider,
+      admin: data.admin === true,
     }
   } catch {
     return null
   }
+}
+
+export function sessionFromRequest(
+  req: IncomingMessage,
+  env: Record<string, string>,
+): SessionUser | null {
+  const token = cookies(req)[sessionCookie]
+  if (!token) return null
+
+  const session = readToken(token, authSecret(env))
+  if (!session) return null
+
+  const account = readAccounts().find((item) => item.id === session.id)
+  if (!account) return session
+
+  return sessionUser(account, env)
 }
 
 function cookies(req: IncomingMessage) {
@@ -134,12 +165,6 @@ function setCookie(res: ServerResponse, name: string, value: string, maxAge: num
 
 function clearCookie(res: ServerResponse, name: string) {
   appendCookie(res, `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown) {
-  res.statusCode = status
-  res.setHeader('content-type', 'application/json')
-  res.end(JSON.stringify(body))
 }
 
 function redirect(res: ServerResponse, location: string) {
@@ -187,26 +212,15 @@ function saveAvatar(id: string, dataUrl: string) {
   return true
 }
 
-function sessionUser(account: Account): SessionUser {
+function sessionUser(account: Account, env: Record<string, string>): SessionUser {
   return {
     id: account.id,
     name: account.name,
     email: account.email,
     avatar: account.avatar,
     provider: account.provider,
+    admin: isAdminAccount(account, env),
   }
-}
-
-async function readJson(req: IncomingMessage) {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(Buffer.from(chunk))
-  const text = Buffer.concat(chunks).toString()
-  if (!text) return {}
-  return JSON.parse(text) as Record<string, unknown>
-}
-
-function textField(value: unknown) {
-  return typeof value === 'string' ? value.trim() : ''
 }
 
 async function exchangeGoogle(env: Record<string, string>, code: string, redirectUri: string) {
@@ -359,7 +373,7 @@ function createAuthHandler(env: Record<string, string>): Connect.NextHandleFunct
         const token = cookies(req)[sessionCookie]
         const session = token ? readToken(token, secret) : null
         const account = session ? readAccounts().find((item) => item.id === session.id) : undefined
-        sendJson(res, 200, { user: account ? sessionUser(account) : session, providers: providers(env) })
+        sendJson(res, 200, { user: account ? sessionUser(account, env) : session, providers: providers(env) })
         return
       }
 
@@ -428,8 +442,8 @@ function createAuthHandler(env: Record<string, string>): Connect.NextHandleFunct
         }
         accounts.push(account)
         writeAccounts(accounts)
-        setCookie(res, sessionCookie, createToken(sessionUser(account), secret), 60 * 60 * 24 * 7)
-        sendJson(res, 200, { user: sessionUser(account) })
+        setCookie(res, sessionCookie, createToken(sessionUser(account, env), secret), 60 * 60 * 24 * 7)
+        sendJson(res, 200, { user: sessionUser(account, env) })
         return
       }
 
@@ -444,8 +458,8 @@ function createAuthHandler(env: Record<string, string>): Connect.NextHandleFunct
           return
         }
 
-        setCookie(res, sessionCookie, createToken(sessionUser(account), secret), 60 * 60 * 24 * 7)
-        sendJson(res, 200, { user: sessionUser(account) })
+        setCookie(res, sessionCookie, createToken(sessionUser(account, env), secret), 60 * 60 * 24 * 7)
+        sendJson(res, 200, { user: sessionUser(account, env) })
         return
       }
 
@@ -464,6 +478,26 @@ function createAuthHandler(env: Record<string, string>): Connect.NextHandleFunct
         if (name.length < 2 || name.length > 80) {
           sendJson(res, 400, { error: 'Enter your name.' })
           return
+        }
+
+        const nextEmail = textField(body.email).toLowerCase()
+        if (nextEmail && nextEmail !== account.email) {
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+            sendJson(res, 400, { error: 'Enter a valid email.' })
+            return
+          }
+          if (accounts.some((item) => item.id !== account.id && item.email === nextEmail)) {
+            sendJson(res, 409, { error: 'An account with this email already exists.' })
+            return
+          }
+          if (account.provider === 'password') {
+            const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : ''
+            if (!checkPassword(currentPassword, account.passwordHash)) {
+              sendJson(res, 401, { error: 'Current password is wrong.' })
+              return
+            }
+          }
+          account.email = nextEmail
         }
 
         const nextPassword = typeof body.newPassword === 'string' ? body.newPassword : ''
@@ -499,7 +533,7 @@ function createAuthHandler(env: Record<string, string>): Connect.NextHandleFunct
 
         account.name = name
         writeAccounts(accounts)
-        const user = sessionUser(account)
+        const user = sessionUser(account, env)
         setCookie(res, sessionCookie, createToken(user, secret), 60 * 60 * 24 * 7)
         sendJson(res, 200, { user })
         return
@@ -571,7 +605,7 @@ function createAuthHandler(env: Record<string, string>): Connect.NextHandleFunct
         }
 
         const account = upsertProviderAccount(providerName, profile)
-        setCookie(res, sessionCookie, createToken(sessionUser(account), secret), 60 * 60 * 24 * 7)
+        setCookie(res, sessionCookie, createToken(sessionUser(account, env), secret), 60 * 60 * 24 * 7)
         redirect(res, next)
         return
       }

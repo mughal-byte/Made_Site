@@ -11,6 +11,7 @@ node_modules
 .env
 .auth-secret
 .accounts.json
+.notifications.json
 .avatars
 dist
 dist-ssr

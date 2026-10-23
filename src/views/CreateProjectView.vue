@@ -4,12 +4,18 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import { projectTypes, useProjectsStore } from '../stores/projects'
 import { useEditorStore } from '../stores/editor'
+import { useNotificationsStore } from '../stores/notifications'
+import { useInboxStore } from '../stores/inbox'
+import { useToastStore } from '../stores/toast'
 import { pageFromTemplate, siteTemplates } from '../stores/templates'
 
 const route = useRoute()
 const router = useRouter()
 const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()
+const notifications = useNotificationsStore()
+const inbox = useInboxStore()
+const toast = useToastStore()
 
 const requestedTemplate = route.query.template
 const template =
@@ -36,6 +42,17 @@ function createProject() {
   const page = template ? pageFromTemplate(template.id) : null
   if (page) editorStore.seedPage(project.id, page.elements, page.theme)
   else editorStore.ensurePage(project.id, project.type)
+
+  toast.success('Website created', `${project.name} is ready to edit.`)
+  notifications.notify(
+    'Website created',
+    `${project.name} is ready in the editor.`,
+  )
+  void inbox.push(
+    'Website created',
+    `${project.name} was added to your account.`,
+    `/projects/${project.id}/editor`,
+  )
 
   router.push(`/projects/${project.id}/editor`)
 }
